@@ -17,7 +17,7 @@ each finding.
 **Data source:** [Global Superstore Dataset](https://www.kaggle.com/datasets) (Kaggle) —
 Orders and Returns tables, ~[N] orders / ~[N] returns after cleaning.
 
----
+
 
 ## Tech Stack
 
@@ -25,28 +25,28 @@ Orders and Returns tables, ~[N] orders / ~[N] returns after cleaning.
 |---|---|
 | **Python (Pandas)** | Merging Orders + Returns, feature engineering (`Delivery_Delay_Days`, `Return_Processing_Time`), type casting, bulk load to MySQL |
 | **MySQL** | Schema design (indexed on `Category`, `Customer_ID`, `Return_Status`), window functions (`RANK() OVER`), aggregate KPI queries |
-| **Power BI** | Executive dashboard — return rate trends, cost impact, disposition split |
 
 ---
 
 ## Key Business Insights ("So What?")
 
-> Replace the bracketed values below with your actual output once
-> `queries_mysql.sql` runs against your extracted Global Superstore data.
-
-- **Financial Bleed:** Returns accounted for **[X]%** of gross revenue,
-  totaling **$[Y]** in lost sales — concentrated in [top category].
-- **Category Risk:** **[Category name]** has the highest return rate at
-  **[X]%**, more than [N]x the rate of the lowest-risk category.
-- **Logistics Impact:** Late deliveries increased return likelihood from
-  **[X]%** to **[Y]%** — a direct, measurable link between fulfillment
-  speed and reverse-logistics cost.
-- **Customer Behavior:** Flagged **[N]** "serial returner" accounts
-  (>40% return rate on 5+ orders), surfacing a candidate policy review
-  (return windows, restocking fees) to cut avoidable cost.
-- **Processing Efficiency:** Return processing time varies by reason —
-  **[Reason]** takes **[X] days** on average vs. **[Y] days** for
-  **[other reason]**, pointing to a specific inspection/grading bottleneck.
+- **Financial Bleed:** Returns accounted for **12.79%** of gross revenue
+  (**$1,212,332.99** gross sales), totaling **$155,069.02** in lost sales
+  — an overall return rate of **14.65%** across 2,000 orders.
+- **Category Risk:** **Technology** has the highest return rate at
+  **18.61%** (115 of 618 orders), vs. **13.66%** for Office Supplies and
+  **10.82%** for Furniture — nearly double the lowest-risk category.
+- **Logistics Impact:** Late deliveries raise return likelihood from
+  **11.96%** (on-time) to **22.66%** (late) — a direct, measurable link
+  between fulfillment speed and reverse-logistics cost.
+- **Customer Behavior:** Flagged **13** "serial returner" accounts
+  (>40% return rate on 5+ orders) — the top account returned 80% of its
+  orders — surfacing a candidate policy review (return windows, restocking
+  fees) to cut avoidable cost.
+- **Regional Patterns:** Return reasons vary by region — **Wrong Size**
+  dominates in the East (27 cases), while **Damaged in Transit** is the
+  top reason in the South, West, and Central regions, pointing to a
+  packaging/carrier issue outside the East.
 
 ---
 
@@ -54,10 +54,10 @@ Orders and Returns tables, ~[N] orders / ~[N] returns after cleaning.
 
 | Finding | Recommendation |
 |---|---|
-| [Category] drives the highest return rate | Review size charts / product descriptions / QC for that category's top return reasons |
-| Late delivery nearly doubles return rate | Prioritize on-time delivery for high-risk categories; consider regional fulfillment centers |
-| [N] serial returners identified | Introduce return-frequency-based policy tiers (restocking fee, tightened window) |
-| [Reason] returns take longest to process | Streamline inspection workflow for that return type |
+| Technology drives the highest return rate (18.61%) | Review product descriptions / QC and packaging for Technology SKUs |
+| Late delivery nearly doubles return rate (11.96% → 22.66%) | Prioritize on-time delivery for high-risk categories; consider regional fulfillment centers |
+| 13 serial returners identified (up to 80% return rate) | Introduce return-frequency-based policy tiers (restocking fee, tightened window) |
+| Damaged in Transit dominates outside the East | Audit packaging/carrier handling for South, West, Central regions |
 
 ---
 
@@ -76,16 +76,16 @@ ORDER BY return_rate_pct DESC
 LIMIT 3;
 ```
 
-**Return reasons by city — window function:**
+**Top return reason by region — window function:**
 ```sql
-SELECT City, Return_Reason, reason_count
+SELECT Region, Return_Reason, reason_count
 FROM (
     SELECT
-        City, Return_Reason, COUNT(*) AS reason_count,
-        RANK() OVER (PARTITION BY City ORDER BY COUNT(*) DESC) AS rnk
+        Region, Return_Reason, COUNT(*) AS reason_count,
+        RANK() OVER (PARTITION BY Region ORDER BY COUNT(*) DESC) AS rnk
     FROM orders_returns
     WHERE Return_Status = 'Yes'
-    GROUP BY City, Return_Reason
+    GROUP BY Region, Return_Reason
 ) ranked
 WHERE rnk = 1
 ORDER BY reason_count DESC;
@@ -109,16 +109,12 @@ ORDER BY return_rate_pct DESC;
 ## Repository Structure
 
 ```
-├── schema.sql            # MySQL table creation (indexed, typed)
-├── preprocess_mysql.py   # Pandas merge + feature engineering + MySQL load
-├── queries_mysql.sql     # All 7 RCA/KPI business questions
+├── schema.sql              # MySQL table creation (indexed, typed)
+├── preprocess_mysql.py     # Pandas merge + feature engineering + MySQL load
+├── generate_sample_data.py # Synthetic data generator (schema-matched, realistic distributions)
+├── Problems.sql             # All RCA/KPI business questions
 └── README.md
 ```
-
-*Raw CSVs are not included — see [Global Superstore on Kaggle](https://www.kaggle.com/datasets)
-for the source data. Data structure: `Orders` (order/customer/product/sales
-detail) left-joined to `Returns` (order-level return flag + reason) on
-`Order_ID`.*
 
 ---
 
@@ -127,5 +123,6 @@ detail) left-joined to `Returns` (order-level return flag + reason) on
 1. `mysql -u root -p < schema.sql`
 2. Update `DB_CONFIG` in `preprocess_mysql.py` with your MySQL credentials
 3. `pip install pandas pymysql sqlalchemy`
-4. `python3 preprocess_mysql.py`
-5. `mysql -u <user> -p returns_project < queries_mysql.sql`
+4. `python3 generate_sample_data.py` (or point the script at your own Orders/Returns CSVs)
+5. `python3 preprocess_mysql.py`
+6. `mysql -u <user> -p returns_project < Problems.sql`
